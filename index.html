@@ -22,17 +22,36 @@ input::placeholder{color:rgba(255,255,255,0.4)}
 .btn-secondary{background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2)}
 .room-code{font-size:2.8rem;font-weight:900;text-align:center;letter-spacing:8px;background:linear-gradient(90deg,#43e97b,#38f9d7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;padding:10px 0}
 .toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(67,233,123,0.95);color:#1a1a2e;padding:12px 24px;border-radius:50px;font-weight:700;z-index:999;display:none;white-space:nowrap;font-size:0.9rem}
-.status-bar{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:14px;padding:12px 16px;text-align:center;font-size:0.9rem;font-weight:600;margin-bottom:4px;line-height:1.4}
+.status-bar{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:14px;padding:10px 16px;text-align:center;font-size:0.9rem;font-weight:600;margin-bottom:4px;line-height:1.5}
 .x-color{color:#ff6b6b}
 .o-color{color:#38f9d7}
+
+/* Timer bar */
+.timer-wrap{height:8px;background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden;margin-bottom:6px}
+.timer-bar{height:100%;border-radius:4px;transition:width 1s linear,background 1s linear}
+.timer-bar.normal{background:linear-gradient(90deg,#43e97b,#38f9d7)}
+.timer-bar.warning{background:linear-gradient(90deg,#f7971e,#ffd200)}
+.timer-bar.danger{background:linear-gradient(90deg,#e52d27,#ff6b6b)}
+.timer-label{text-align:center;font-size:0.78rem;opacity:0.6;margin-bottom:6px}
+
+/* Confirm bar */
+.confirm-bar{background:rgba(67,233,123,0.1);border:1px solid rgba(67,233,123,0.4);border-radius:14px;padding:10px 16px;text-align:center;display:none;flex-direction:column;gap:8px;margin-bottom:4px}
+.confirm-bar.show{display:flex}
+.confirm-bar-text{font-size:0.85rem;opacity:0.8}
+.confirm-bar-btns{display:flex;gap:8px}
+.confirm-bar-btns button{flex:1;padding:10px;border:none;border-radius:50px;font-weight:800;font-size:0.85rem;cursor:pointer}
+.btn-confirm{background:linear-gradient(135deg,#43e97b,#38f9d7);color:#1a1a2e}
+.btn-cancel-pick{background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2)}
+
 .mega-board{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;width:100%;max-width:420px;margin:0 auto}
-.small-board-wrap{border-radius:10px;padding:4px;border:2px solid transparent;transition:all 0.25s;cursor:default}
+.small-board-wrap{border-radius:10px;padding:4px;border:2px solid transparent;transition:all 0.25s}
 .small-board-wrap.active-board{background:rgba(67,233,123,0.12);border-color:rgba(67,233,123,0.6);box-shadow:0 0 12px rgba(67,233,123,0.2)}
-.small-board-wrap.choosable{background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.3);cursor:pointer}
-.small-board-wrap.choosable:hover{border-color:rgba(67,233,123,0.5)}
+.small-board-wrap.choosable{background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.25);cursor:pointer}
+.small-board-wrap.choosable:active{border-color:rgba(67,233,123,0.6);background:rgba(67,233,123,0.1)}
+.small-board-wrap.selected-board{background:rgba(67,233,123,0.18);border-color:#43e97b;box-shadow:0 0 16px rgba(67,233,123,0.35)}
 .small-board-wrap.won-x{background:rgba(255,107,107,0.15);border-color:rgba(255,107,107,0.5)}
 .small-board-wrap.won-o{background:rgba(56,249,215,0.15);border-color:rgba(56,249,215,0.5)}
-.small-board-wrap.drawn{background:rgba(255,255,255,0.04);border-color:rgba(255,255,255,0.15)}
+.small-board-wrap.drawn{background:rgba(255,255,255,0.04);border-color:rgba(255,255,255,0.12)}
 .small-board-container{position:relative}
 .small-board{display:grid;grid-template-columns:repeat(3,1fr);gap:3px}
 .small-board-wrap.won-x .small-board,
@@ -42,7 +61,7 @@ input::placeholder{color:rgba(255,255,255,0.4)}
 .cell:active{transform:scale(0.88)}
 .cell.x{color:#ff6b6b;background:rgba(255,107,107,0.18)}
 .cell.o{color:#38f9d7;background:rgba(56,249,215,0.18)}
-.cell.playable:not(.x):not(.o){background:rgba(67,233,123,0.15);cursor:pointer}
+.cell.playable:not(.x):not(.o){background:rgba(67,233,123,0.15)}
 .cell:disabled{cursor:default}
 .board-winner{position:absolute;inset:0;font-size:2.2rem;font-weight:900;display:flex;align-items:center;justify-content:center;pointer-events:none}
 .board-winner.x{color:#ff6b6b}
@@ -71,7 +90,6 @@ input::placeholder{color:rgba(255,255,255,0.4)}
 .mode-info{display:flex;flex-direction:column;gap:2px}
 .mode-title{font-size:1rem;font-weight:800}
 .mode-desc{font-size:0.75rem;opacity:0.7}
-.choose-hint{text-align:center;font-size:0.8rem;color:#43e97b;margin-bottom:4px;font-weight:600}
 </style>
 </head>
 <body>
@@ -102,7 +120,7 @@ input::placeholder{color:rgba(255,255,255,0.4)}
   <div class="card" style="font-size:0.82rem;opacity:0.6;text-align:center;line-height:1.7">
     Win 3 small boards in a row to win!<br/>
     Your move decides which board your opponent plays in next.<br/>
-    If that board is done — opponent picks any open board!
+    If that board is done — pick any open board freely!
   </div>
 </div>
 
@@ -138,7 +156,15 @@ input::placeholder{color:rgba(255,255,255,0.4)}
     <div class="player-badge o" id="badge-o">○ <span id="name-o">Player 2</span></div>
   </div>
   <div class="status-bar" id="status-bar">Starting...</div>
-  <div class="choose-hint" id="choose-hint" style="display:none">👆 Tap any highlighted board to play there</div>
+  <div class="timer-wrap"><div class="timer-bar normal" id="timer-bar" style="width:100%"></div></div>
+  <div class="timer-label" id="timer-label"></div>
+  <div class="confirm-bar" id="confirm-bar">
+    <div class="confirm-bar-text" id="confirm-bar-text">Play in this board?</div>
+    <div class="confirm-bar-btns">
+      <button class="btn-cancel-pick" onclick="cancelBoardPick()">← Change</button>
+      <button class="btn-confirm" onclick="confirmBoardPick()">✅ Confirm</button>
+    </div>
+  </div>
   <div class="mega-board" id="mega-board"></div>
   <button class="btn btn-secondary" style="margin-top:8px" onclick="confirmQuit()">✕ Quit</button>
 </div>
@@ -158,15 +184,17 @@ input::placeholder{color:rgba(255,255,255,0.4)}
 const SUPABASE_URL='https://ricskwxzovtfxyyfdbcr.supabase.co';
 const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpY3Nrd3h6b3Z0Znh5eWZkYmNyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4ODc1NTEsImV4cCI6MjA4ODQ2MzU1MX0.YN50vzZF8DY0tf5_jPhaOinszn90Q9MXpPtg_NV_d5I';
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
-
 const WINS=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
 
 // ── State ─────────────────────────────────────────────
-let mode='',currentPlayer='X',activeBoard=4,freeChoice=false;
+let mode='',currentPlayer='X',activeBoard=4,freeChoice=false,pendingBoard=-1;
 let smallBoards=Array(9).fill(null).map(()=>Array(9).fill(''));
 let boardWinners=Array(9).fill('');
 let megaWinner='',mySymbol='X',gameActive=false;
 let roomId='',roomCode='',isHost=false,myName='',onlineChannel=null;
+
+// Timer state
+let timerInterval=null,timerSeconds=0,timerMax=0;
 
 // ── Utils ─────────────────────────────────────────────
 function uid(){return crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now()}
@@ -175,31 +203,78 @@ function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classL
 function toast(msg,dur=2500){const t=document.getElementById('toast');t.textContent=msg;t.style.display='block';clearTimeout(t._t);t._t=setTimeout(()=>t.style.display='none',dur)}
 function copyLink(){const url=`${location.origin}${location.pathname}?room=${roomCode}`;navigator.clipboard.writeText(url).then(()=>toast('✅ Link copied!')).catch(()=>toast('Code: '+roomCode))}
 (()=>{const p=new URLSearchParams(location.search);if(p.get('room'))document.getElementById('join-code').value=p.get('room')})();
+function checkWinner(cells){for(const[a,b,c]of WINS)if(cells[a]&&cells[a]===cells[b]&&cells[a]===cells[c])return cells[a];if(cells.every(c=>c!==''))return'D';return'';}
+function isMyTurn(){return mode==='local'||(mode==='cpu'&&currentPlayer==='X')||(mode==='online'&&currentPlayer===mySymbol)}
 
-function checkWinner(cells){
-  for(const[a,b,c]of WINS)
-    if(cells[a]&&cells[a]===cells[b]&&cells[a]===cells[c])return cells[a];
-  if(cells.every(c=>c!==''))return'D';
-  return'';
+// ── Timer ─────────────────────────────────────────────
+function startTimer(seconds,onExpire){
+  clearTimer();
+  timerSeconds=seconds;timerMax=seconds;
+  const bar=document.getElementById('timer-bar');
+  const label=document.getElementById('timer-label');
+  bar.style.transition='none';
+  bar.style.width='100%';
+  bar.className='timer-bar normal';
+  label.textContent=`⏱ ${timerSeconds}s`;
+
+  timerInterval=setInterval(()=>{
+    timerSeconds--;
+    const pct=(timerSeconds/timerMax)*100;
+    bar.style.transition='width 1s linear';
+    bar.style.width=pct+'%';
+    label.textContent=`⏱ ${timerSeconds}s`;
+    if(pct<=30) bar.className='timer-bar danger';
+    else if(pct<=60) bar.className='timer-bar warning';
+    if(timerSeconds<=0){clearTimer();onExpire();}
+  },1000);
 }
 
-function isMyTurn(){
-  return mode==='local'||(mode==='cpu'&&currentPlayer==='X')||(mode==='online'&&currentPlayer===mySymbol);
+function clearTimer(){
+  clearInterval(timerInterval);timerInterval=null;
+  document.getElementById('timer-label').textContent='';
+  const bar=document.getElementById('timer-bar');
+  bar.style.transition='none';bar.style.width='100%';
+  bar.className='timer-bar normal';
 }
 
 // ── Init ──────────────────────────────────────────────
 function initGame(p1,p2,gameMode,symbol){
-  mode=gameMode;currentPlayer='X';activeBoard=4;freeChoice=false;
+  mode=gameMode;currentPlayer='X';activeBoard=4;freeChoice=false;pendingBoard=-1;
   smallBoards=Array(9).fill(null).map(()=>Array(9).fill(''));
   boardWinners=Array(9).fill('');
   megaWinner='';gameActive=true;mySymbol=symbol||'X';
   document.getElementById('name-x').textContent=p1;
   document.getElementById('name-o').textContent=p2;
   document.getElementById('winner-overlay').classList.remove('show');
-  document.getElementById('choose-hint').style.display='none';
-  renderMega();updateStatus();
+  document.getElementById('confirm-bar').classList.remove('show');
+  clearTimer();
+  renderMega();updateStatus();startTurnTimer();
   showScreen('screen-game');
   if(mode==='cpu'&&currentPlayer==='O') setTimeout(cpuMove,600);
+}
+
+// ── Turn Timer ────────────────────────────────────────
+function startTurnTimer(){
+  if(!gameActive) return;
+  if(!isMyTurn()&&mode!=='local'){clearTimer();return;}
+  const secs=freeChoice?30:15;
+  startTimer(secs,()=>{
+    if(!gameActive) return;
+    if(freeChoice){
+      // auto pick random open board
+      const open=boardWinners.map((w,i)=>w===''?i:-1).filter(i=>i>=0);
+      if(open.length>0){
+        pendingBoard=-1;
+        const pick=open[~~(Math.random()*open.length)];
+        confirmBoardPickForced(pick);
+      }
+    } else {
+      // auto play random available cell
+      const avail=[];
+      for(let c=0;c<9;c++) if(smallBoards[activeBoard][c]==='') avail.push(c);
+      if(avail.length>0) makeMove(activeBoard,avail[~~(Math.random()*avail.length)]);
+    }
+  });
 }
 
 // ── Render ────────────────────────────────────────────
@@ -211,13 +286,13 @@ function renderMega(){
   for(let b=0;b<9;b++){
     const wrap=document.createElement('div');
     wrap.className='small-board-wrap';
-
     if(boardWinners[b]==='X') wrap.classList.add('won-x');
     else if(boardWinners[b]==='O') wrap.classList.add('won-o');
     else if(boardWinners[b]==='D') wrap.classList.add('drawn');
     else if(freeChoice&&myTurn&&gameActive){
-      wrap.classList.add('choosable');
-      wrap.addEventListener('click',()=>selectBoard(b));
+      if(b===pendingBoard) wrap.classList.add('selected-board');
+      else wrap.classList.add('choosable');
+      wrap.addEventListener('click',()=>pickBoard(b));
     } else if(b===activeBoard&&gameActive){
       wrap.classList.add('active-board');
     }
@@ -225,7 +300,6 @@ function renderMega(){
     const container=document.createElement('div');
     container.className='small-board-container';
     container.style.position='relative';
-
     const grid=document.createElement('div');
     grid.className='small-board';
 
@@ -247,7 +321,6 @@ function renderMega(){
       ov.textContent=boardWinners[b]==='X'?'✕':boardWinners[b]==='O'?'○':'—';
       container.appendChild(ov);
     }
-
     container.appendChild(grid);
     wrap.appendChild(container);
     mb.appendChild(wrap);
@@ -259,33 +332,55 @@ function renderMega(){
 
 function updateStatus(){
   const bar=document.getElementById('status-bar');
-  const hint=document.getElementById('choose-hint');
-  if(!gameActive){bar.textContent='Game over';hint.style.display='none';return;}
+  if(!gameActive){bar.textContent='Game over';return;}
   const sym=currentPlayer==='X'?'✕':'○';
   const cls=currentPlayer==='X'?'x-color':'o-color';
   const name=currentPlayer==='X'?document.getElementById('name-x').textContent:document.getElementById('name-o').textContent;
   const myTurn=isMyTurn();
-  if(freeChoice&&myTurn){
-    bar.innerHTML=`<span class="${cls}">${sym} ${name}</span> — Choose any open board!`;
-    hint.style.display='block';
-  } else if(freeChoice&&!myTurn){
-    bar.innerHTML=`<span class="${cls}">${sym} ${name}</span> — Choosing a board...`;
-    hint.style.display='none';
-  } else {
+  if(freeChoice&&myTurn)
+    bar.innerHTML=`<span class="${cls}">${sym} ${name}</span><br/>👆 Tap a board to select it`;
+  else if(freeChoice&&!myTurn)
+    bar.innerHTML=`<span class="${cls}">${sym} ${name}</span> is choosing a board...`;
+  else
     bar.innerHTML=`<span class="${cls}">${sym} ${name}</span>${myTurn?' — Your turn!':' — Opponent\'s turn...'}`;
-    hint.style.display='none';
-  }
 }
 
-// ── Select Board (free choice) ────────────────────────
-function selectBoard(b){
-  if(!freeChoice||!isMyTurn()) return;
-  if(boardWinners[b]!=='') return;
+// ── Board Pick ────────────────────────────────────────
+function pickBoard(b){
+  if(!freeChoice||!isMyTurn()||boardWinners[b]!=='') return;
+  pendingBoard=b;
+  const confirmBar=document.getElementById('confirm-bar');
+  const name=`Board ${b+1}`;
+  document.getElementById('confirm-bar-text').textContent=`Play in ${name}? (position ${b+1} of 9)`;
+  confirmBar.classList.add('show');
+  renderMega();
+}
+
+function cancelBoardPick(){
+  pendingBoard=-1;
+  document.getElementById('confirm-bar').classList.remove('show');
+  renderMega();
+}
+
+function confirmBoardPick(){
+  if(pendingBoard===-1) return;
+  const chosen=pendingBoard;
+  pendingBoard=-1;
+  document.getElementById('confirm-bar').classList.remove('show');
+  freeChoice=false;
+  activeBoard=chosen;
+  clearTimer();
+  if(mode==='online') pushOnlineState();
+  renderMega();updateStatus();startTurnTimer();
+}
+
+function confirmBoardPickForced(b){
+  pendingBoard=-1;
+  document.getElementById('confirm-bar').classList.remove('show');
   freeChoice=false;
   activeBoard=b;
-  document.getElementById('choose-hint').style.display='none';
   if(mode==='online') pushOnlineState();
-  renderMega();updateStatus();
+  renderMega();updateStatus();startTurnTimer();
 }
 
 // ── Make Move ─────────────────────────────────────────
@@ -293,9 +388,9 @@ function makeMove(boardIdx,cellIdx){
   if(!gameActive||freeChoice) return;
   if(smallBoards[boardIdx][cellIdx]!=='') return;
   if(boardIdx!==activeBoard) return;
+  clearTimer();
 
   smallBoards[boardIdx][cellIdx]=currentPlayer;
-
   const bw=checkWinner(smallBoards[boardIdx]);
   if(bw) boardWinners[boardIdx]=bw;
 
@@ -307,33 +402,34 @@ function makeMove(boardIdx,cellIdx){
     return;
   }
 
-  // determine next board
   const nextBoard=cellIdx;
   currentPlayer=currentPlayer==='X'?'O':'X';
 
   if(boardWinners[nextBoard]!==''){
-    // that board is complete — free choice!
-    freeChoice=true;
-    activeBoard=-1;
+    freeChoice=true;activeBoard=-1;pendingBoard=-1;
+    document.getElementById('confirm-bar').classList.remove('show');
   } else {
-    freeChoice=false;
-    activeBoard=nextBoard;
+    freeChoice=false;activeBoard=nextBoard;
   }
 
   if(mode==='online') pushOnlineState();
   renderMega();updateStatus();
-  if(mode==='cpu'&&currentPlayer==='O'&&gameActive) setTimeout(cpuMove,650);
+
+  if(mode==='cpu'&&currentPlayer==='O'&&gameActive){
+    setTimeout(cpuMove,700);
+  } else {
+    startTurnTimer();
+  }
 }
 
 // ── CPU ───────────────────────────────────────────────
 function cpuMove(){
   if(!gameActive||currentPlayer!=='O') return;
+  clearTimer();
 
   if(freeChoice){
-    // CPU picks best available board
     const open=boardWinners.map((w,i)=>w===''?i:-1).filter(i=>i>=0);
     if(open.length===0) return;
-    // prefer boards where CPU can win
     let pick=open.find(b=>findBestCell(smallBoards[b],'O')!==-1);
     if(pick===undefined) pick=open.find(b=>findBestCell(smallBoards[b],'X')!==-1);
     if(pick===undefined) pick=open[~~(Math.random()*open.length)];
@@ -343,15 +439,15 @@ function cpuMove(){
     return;
   }
 
-  const available=[];
-  for(let c=0;c<9;c++) if(smallBoards[activeBoard][c]==='') available.push(c);
-  if(available.length===0) return;
-
+  const avail=[];
+  for(let c=0;c<9;c++) if(smallBoards[activeBoard][c]==='') avail.push(c);
+  if(avail.length===0) return;
   let move=findBestCell(smallBoards[activeBoard],'O');
   if(move===-1) move=findBestCell(smallBoards[activeBoard],'X');
   if(move===-1&&smallBoards[activeBoard][4]==='') move=4;
-  if(move===-1) move=available[~~(Math.random()*available.length)];
+  if(move===-1) move=avail[~~(Math.random()*avail.length)];
   makeMove(activeBoard,move);
+  startTurnTimer();
 }
 
 function findBestCell(cells,sym){
@@ -365,6 +461,7 @@ function findBestCell(cells,sym){
 
 // ── Winner ────────────────────────────────────────────
 function showWinner(w){
+  clearTimer();
   const ov=document.getElementById('winner-overlay');
   const icon=document.getElementById('winner-icon');
   const text=document.getElementById('winner-text');
@@ -391,14 +488,13 @@ function playAgain(){
 }
 
 function goHome(){
+  clearTimer();
   document.getElementById('winner-overlay').classList.remove('show');
   if(onlineChannel){sb.removeChannel(onlineChannel);onlineChannel=null;}
   showScreen('screen-home');
 }
 
 function confirmQuit(){if(confirm('Quit the current game?')) goHome();}
-
-// ── Local & CPU ───────────────────────────────────────
 function startLocal(){initGame('Player 1','Player 2','local','X')}
 function startCPU(){initGame('You','CPU 🤖','cpu','X')}
 
@@ -407,7 +503,7 @@ function buildState(){
   return{
     smallBoards:smallBoards.map(b=>[...b]),
     boardWinners:[...boardWinners],
-    currentPlayer,activeBoard,freeChoice,megaWinner,gameActive
+    currentPlayer,activeBoard,freeChoice,pendingBoard,megaWinner,gameActive
   };
 }
 
@@ -417,6 +513,7 @@ function applyState(s){
   currentPlayer=s.currentPlayer;
   activeBoard=s.activeBoard;
   freeChoice=s.freeChoice;
+  pendingBoard=s.pendingBoard||(-1);
   megaWinner=s.megaWinner;
   gameActive=s.gameActive;
 }
@@ -424,12 +521,10 @@ function applyState(s){
 async function goCreateOnline(){
   const name=document.getElementById('online-name').value.trim();
   if(!name){toast('Enter your nickname!');return;}
-  myName=name;isHost=true;mySymbol='X';
-  roomCode=genCode();
-  const state=buildState();
+  myName=name;isHost=true;mySymbol='X';roomCode=genCode();
   const{data,error}=await sb.from('rooms').insert({
     code:roomCode,host_id:uid(),status:'waiting',
-    game_state:state,player_x:myName,player_o:''
+    game_state:buildState(),player_x:myName,player_o:''
   }).select().single();
   if(error){toast('Error creating room');console.error(error);return;}
   roomId=data.id;
@@ -471,15 +566,16 @@ function subscribeOnline(){
 async function handleOnlineUpdate(room){
   if(!room) return;
   if(room.status==='playing'&&document.getElementById('screen-lobby').classList.contains('active')){
-    // host sees opponent joined
     initGame(myName,room.player_o,'online','X');
     return;
   }
   if(room.game_state&&(room.status==='playing'||room.status==='finished')){
-    const s=room.game_state;
-    applyState(s);
+    clearTimer();
+    applyState(room.game_state);
+    document.getElementById('confirm-bar').classList.remove('show');
     renderMega();updateStatus();
-    if(megaWinner) showWinner(megaWinner);
+    if(megaWinner){showWinner(megaWinner);return;}
+    startTurnTimer();
   }
 }
 </script>
