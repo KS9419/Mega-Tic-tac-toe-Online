@@ -4,8 +4,598 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
 <title>Mega Tic-Tac-Toe Online</title>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js">
+// ══════════════════════════════
+// THE BORING TIC-TAC-TOE
+// ══════════════════════════════
+const SARCASM = [
+  '"The suspense is unbearable."',
+  '"A masterpiece of human strategy."',
+  '"Shakespeare himself could not write this drama."',
+  '"Historians will study this game for centuries."',
+  '"Every move — a work of art."',
+  '"Bold choice. Truly bold."',
+  '"X goes here. O goes there. Repeat until bored."',
+  '"This is peak entertainment."',
+  '"Your ancestors are watching. They are unimpressed."',
+  '"A nail-biter. Truly."',
+  '"The crowd goes... somewhere else."',
+  '"Pure, undistilled excitement."',
+];
+const BORING_WIN_MSGS = {
+  win: [
+    "Congratulations on winning the world's most predictable game.",
+    "You beat 3 in a row. Alert the media.",
+    "A stunning victory. Your legacy is secured.",
+    "The computer is devastated. Not really.",
+    "You win! Here is your trophy: 🏆 (it means nothing)",
+  ],
+  draw: [
+    "A draw. Neither of you could even win at THIS.",
+    "Both players were equally mediocre. Congratulations.",
+    "The game has ended in a tie. As it always does.",
+    "A perfect stalemate. A metaphor for your lives.",
+  ],
+  cpu_win: [
+    "You lost to a few lines of code. Incredible.",
+    "The machine wins. As always.",
+    "The CPU did not even try hard. It still won.",
+    "A computer defeated you at tic-tac-toe. Take that in.",
+  ]
+};
+
+let boringBoard = Array(9).fill('');
+let boringCurrentPlayer = 'X';
+let boringGameActive = false;
+let boringMode = 'local'; // local | cpu | online
+let boringMySymbol = 'X';
+let boringMyName = '';
+let boringIsHost = false;
+let boringRoomCode = '';
+let boringListeners = [];
+
+function randomSarcasm(){
+  return SARCASM[Math.floor(Math.random()*SARCASM.length)];
+}
+function randomMsg(arr){return arr[Math.floor(Math.random()*arr.length)];}
+
+function startBoringLocal(){
+  boringMode='local';boringMySymbol='X';
+  initBoringGame('Player 1','Player 2');
+}
+function startBoringCPU(){
+  boringMode='cpu';boringMySymbol='X';
+  initBoringGame('You','CPU 🤖');
+}
+
+function initBoringGame(p1, p2){
+  boringBoard=Array(9).fill('');
+  boringCurrentPlayer='X';
+  boringGameActive=true;
+  document.getElementById('boring-name-x').textContent=p1;
+  document.getElementById('boring-name-o').textContent=p2;
+  document.getElementById('boring-badge-x').classList.add('active');
+  document.getElementById('boring-badge-o').classList.remove('active');
+  document.getElementById('boring-winner-overlay').classList.remove('show');
+  document.getElementById('sarcasm-bar').textContent='💭 '+randomSarcasm();
+  renderBoringBoard();
+  updateBoringStatus();
+  showScreen('screen-boring-game');
+}
+
+function renderBoringBoard(){
+  const board = document.getElementById('boring-board');
+  board.innerHTML = '';
+  boringBoard.forEach((cell, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'boring-cell' + (cell ? ' '+cell.toLowerCase() : '') + (!cell && boringGameActive ? ' playable' : '');
+    btn.textContent = cell || '';
+    btn.disabled = !!cell || !boringGameActive;
+    if(!cell && boringGameActive) btn.onclick = () => makeBoringMove(i);
+    board.appendChild(btn);
+  });
+}
+
+function makeBoringMove(idx){
+  if(!boringGameActive) return;
+  if(boringBoard[idx]) return;
+  // Online: only move on your turn
+  if(boringMode==='online' && boringCurrentPlayer !== boringMySymbol) return;
+
+  boringBoard[idx] = boringCurrentPlayer;
+  document.getElementById('sarcasm-bar').textContent = '💭 ' + randomSarcasm();
+
+  const winner = checkBoringWinner();
+  if(winner){
+    boringGameActive = false;
+    renderBoringBoard();
+    showBoringWinner(winner);
+    if(boringMode==='online' && boringIsHost) pushBoringState();
+    return;
+  }
+
+  boringCurrentPlayer = boringCurrentPlayer==='X' ? 'O' : 'X';
+  renderBoringBoard();
+  updateBoringStatus();
+
+  if(boringMode==='online' && boringIsHost) pushBoringState();
+  if(boringMode==='cpu' && boringCurrentPlayer==='O' && boringGameActive){
+    setTimeout(makeBoringCPUMove, 600);
+  }
+}
+
+function makeBoringCPUMove(){
+  if(!boringGameActive || boringCurrentPlayer!=='O') return;
+  // Try win, block, centre, random
+  let move = findBoringBest('O') ?? findBoringBest('X') ?? (boringBoard[4]==='' ? 4 : null);
+  if(move===null){
+    const empty = boringBoard.map((v,i)=>v===''?i:-1).filter(i=>i>=0);
+    move = empty[Math.floor(Math.random()*empty.length)];
+  }
+  if(move!==null) makeBoringMove(move);
+}
+
+function findBoringBest(sym){
+  for(const [a,b,c] of WINS){
+    const line=[boringBoard[a],boringBoard[b],boringBoard[c]];
+    if(line.filter(x=>x===sym).length===2 && line.includes('')){
+      return [a,b,c][line.indexOf('')];
+    }
+  }
+  return null;
+}
+
+function checkBoringWinner(){
+  for(const [a,b,c] of WINS){
+    if(boringBoard[a] && boringBoard[a]===boringBoard[b] && boringBoard[a]===boringBoard[c])
+      return boringBoard[a];
+  }
+  if(boringBoard.every(c=>c!=='')) return 'D';
+  return null;
+}
+
+function updateBoringStatus(){
+  const xName = document.getElementById('boring-name-x').textContent;
+  const oName = document.getElementById('boring-name-o').textContent;
+  const name = boringCurrentPlayer==='X' ? xName : oName;
+  document.getElementById('boring-status').textContent = boringCurrentPlayer==='X'
+    ? `✕ ${name}'s turn` : `○ ${name}'s turn`;
+  document.getElementById('boring-badge-x').classList.toggle('active', boringCurrentPlayer==='X');
+  document.getElementById('boring-badge-o').classList.toggle('active', boringCurrentPlayer==='O');
+}
+
+function showBoringWinner(w){
+  const xName = document.getElementById('boring-name-x').textContent;
+  const oName = document.getElementById('boring-name-o').textContent;
+  const icon = document.getElementById('boring-winner-icon');
+  const text = document.getElementById('boring-winner-text');
+  const sub = document.getElementById('boring-winner-sub');
+  if(w==='D'){
+    icon.textContent='🤝';
+    text.textContent="It's a Draw!";
+    text.className='mega-winner-text draw';
+    sub.textContent=randomMsg(BORING_WIN_MSGS.draw);
+  } else {
+    const isX = w==='X';
+    const name = isX ? xName : oName;
+    const isCPU = boringMode==='cpu' && !isX;
+    icon.textContent = isCPU ? '🤖' : '🏆';
+    text.textContent = `${name} Wins!`;
+    text.className = `mega-winner-text ${w.toLowerCase()}`;
+    sub.textContent = isCPU ? randomMsg(BORING_WIN_MSGS.cpu_win) : randomMsg(BORING_WIN_MSGS.win);
+  }
+  document.getElementById('boring-winner-overlay').classList.add('show');
+}
+
+function playBoringAgain(){
+  document.getElementById('boring-winner-overlay').classList.remove('show');
+  const p1=document.getElementById('boring-name-x').textContent;
+  const p2=document.getElementById('boring-name-o').textContent;
+  initBoringGame(p1,p2);
+  if(boringMode==='online' && boringIsHost) pushBoringState();
+}
+
+function goBoringHome(){
+  boringDetachListeners();
+  if(boringIsHost && boringRoomCode) tttDb&&tttDb.ref('boring-rooms/'+boringRoomCode).remove();
+  else if(!boringIsHost && boringRoomCode && boringMyName) tttDb&&tttDb.ref('boring-rooms/'+boringRoomCode+'/guest').remove();
+  boringRoomCode='';boringIsHost=false;boringMyName='';
+  document.getElementById('boring-winner-overlay').classList.remove('show');
+  showScreen('screen-home');
+}
+
+function confirmBoringQuit(){
+  if(confirm('Quit? (You were probably losing anyway)')) goBoringHome();
+}
+
+// ── Boring Online (Firebase boring-rooms/ path) ──
+function boringDetachListeners(){
+  boringListeners.forEach(fn=>fn());
+  boringListeners=[];
+}
+
+function buildBoringState(){
+  return{board:[...boringBoard],currentPlayer:boringCurrentPlayer,gameActive:boringGameActive};
+}
+
+function applyBoringState(s){
+  boringBoard=[...s.board];
+  boringCurrentPlayer=s.currentPlayer;
+  boringGameActive=s.gameActive;
+  renderBoringBoard();
+  updateBoringStatus();
+  if(!boringGameActive){
+    const w=checkBoringWinner();
+    if(w) showBoringWinner(w);
+  }
+}
+
+function pushBoringState(){
+  if(!boringRoomCode||!boringIsHost) return;
+  tttDb.ref('boring-rooms/'+boringRoomCode+'/state').set(buildBoringState());
+}
+
+function goCreateBoring(){
+  const name=document.getElementById('boring-online-name').value.trim();
+  if(!name){toast('Enter your nickname!');return;}
+  initTttDb();
+  boringMyName=name;boringIsHost=true;boringMySymbol='X';
+  boringRoomCode=genCode();
+
+  tttDb.ref('boring-rooms/'+boringRoomCode).set({
+    host:name,status:'waiting',ts:Date.now()
+  }).then(()=>{
+    document.getElementById('boring-lobby-code').textContent=boringRoomCode;
+    showScreen('screen-boring-lobby');
+    document.getElementById('boring-lobby-status').textContent='⏳ Waiting for someone equally bored...';
+    toast('Room: '+boringRoomCode+' — share it!',3000);
+
+    const gRef=tttDb.ref('boring-rooms/'+boringRoomCode+'/guest');
+    const gl=gRef.on('value',snap=>{
+      const g=snap.val();if(!g)return;
+      document.getElementById('boring-lobby-status').textContent='✅ '+g.name+' joined! Prepare to be underwhelmed.';
+      setTimeout(()=>{
+        initBoringGame(boringMyName, g.name);
+        pushBoringState();
+      },700);
+    });
+    boringListeners.push(()=>gRef.off('value',gl));
+  }).catch(e=>toast('Error: '+e.message));
+}
+
+function goJoinBoring(){
+  const name=document.getElementById('boring-online-name').value.trim();
+  const code=document.getElementById('boring-join-code').value.trim().toUpperCase();
+  if(!name||!code){toast('Enter name and room code!');return;}
+  initTttDb();
+  boringMyName=name;boringIsHost=false;boringMySymbol='O';
+
+  tttDb.ref('boring-rooms/'+code).once('value').then(snap=>{
+    const room=snap.val();
+    if(!room){toast('Room not found!');return;}
+    boringRoomCode=code;
+    tttDb.ref('boring-rooms/'+code+'/guest').set({name});
+    tttDb.ref('boring-rooms/'+code+'/status').set('playing');
+
+    document.getElementById('boring-lobby-code').textContent=code;
+    document.getElementById('boring-lobby-status').textContent='✅ Joined! Brace yourself.';
+    showScreen('screen-boring-lobby');
+    toast('Joined room '+code,2000);
+
+    const sRef=tttDb.ref('boring-rooms/'+code+'/state');
+    const sl=sRef.on('value',snap=>{
+      const s=snap.val();if(!s)return;
+      if(!boringGameActive && s.gameActive){
+        initBoringGame(room.host, boringMyName);
+      }
+      applyBoringState(s);
+    });
+    boringListeners.push(()=>sRef.off('value',sl));
+  }).catch(e=>toast('Error: '+e.message));
+}
+
+function copyBoringCode(){
+  const code=boringRoomCode||document.getElementById('boring-lobby-code').textContent;
+  navigator.clipboard?.writeText(code).then(()=>toast('✅ Code copied!')).catch(()=>prompt('Share this code:',code));
+}
+
+</script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js">
+// ══════════════════════════════
+// THE BORING TIC-TAC-TOE
+// ══════════════════════════════
+const SARCASM = [
+  '"The suspense is unbearable."',
+  '"A masterpiece of human strategy."',
+  '"Shakespeare himself could not write this drama."',
+  '"Historians will study this game for centuries."',
+  '"Every move — a work of art."',
+  '"Bold choice. Truly bold."',
+  '"X goes here. O goes there. Repeat until bored."',
+  '"This is peak entertainment."',
+  '"Your ancestors are watching. They are unimpressed."',
+  '"A nail-biter. Truly."',
+  '"The crowd goes... somewhere else."',
+  '"Pure, undistilled excitement."',
+];
+const BORING_WIN_MSGS = {
+  win: [
+    "Congratulations on winning the world's most predictable game.",
+    "You beat 3 in a row. Alert the media.",
+    "A stunning victory. Your legacy is secured.",
+    "The computer is devastated. Not really.",
+    "You win! Here is your trophy: 🏆 (it means nothing)",
+  ],
+  draw: [
+    "A draw. Neither of you could even win at THIS.",
+    "Both players were equally mediocre. Congratulations.",
+    "The game has ended in a tie. As it always does.",
+    "A perfect stalemate. A metaphor for your lives.",
+  ],
+  cpu_win: [
+    "You lost to a few lines of code. Incredible.",
+    "The machine wins. As always.",
+    "The CPU did not even try hard. It still won.",
+    "A computer defeated you at tic-tac-toe. Take that in.",
+  ]
+};
+
+let boringBoard = Array(9).fill('');
+let boringCurrentPlayer = 'X';
+let boringGameActive = false;
+let boringMode = 'local'; // local | cpu | online
+let boringMySymbol = 'X';
+let boringMyName = '';
+let boringIsHost = false;
+let boringRoomCode = '';
+let boringListeners = [];
+
+function randomSarcasm(){
+  return SARCASM[Math.floor(Math.random()*SARCASM.length)];
+}
+function randomMsg(arr){return arr[Math.floor(Math.random()*arr.length)];}
+
+function startBoringLocal(){
+  boringMode='local';boringMySymbol='X';
+  initBoringGame('Player 1','Player 2');
+}
+function startBoringCPU(){
+  boringMode='cpu';boringMySymbol='X';
+  initBoringGame('You','CPU 🤖');
+}
+
+function initBoringGame(p1, p2){
+  boringBoard=Array(9).fill('');
+  boringCurrentPlayer='X';
+  boringGameActive=true;
+  document.getElementById('boring-name-x').textContent=p1;
+  document.getElementById('boring-name-o').textContent=p2;
+  document.getElementById('boring-badge-x').classList.add('active');
+  document.getElementById('boring-badge-o').classList.remove('active');
+  document.getElementById('boring-winner-overlay').classList.remove('show');
+  document.getElementById('sarcasm-bar').textContent='💭 '+randomSarcasm();
+  renderBoringBoard();
+  updateBoringStatus();
+  showScreen('screen-boring-game');
+}
+
+function renderBoringBoard(){
+  const board = document.getElementById('boring-board');
+  board.innerHTML = '';
+  boringBoard.forEach((cell, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'boring-cell' + (cell ? ' '+cell.toLowerCase() : '') + (!cell && boringGameActive ? ' playable' : '');
+    btn.textContent = cell || '';
+    btn.disabled = !!cell || !boringGameActive;
+    if(!cell && boringGameActive) btn.onclick = () => makeBoringMove(i);
+    board.appendChild(btn);
+  });
+}
+
+function makeBoringMove(idx){
+  if(!boringGameActive) return;
+  if(boringBoard[idx]) return;
+  // Online: only move on your turn
+  if(boringMode==='online' && boringCurrentPlayer !== boringMySymbol) return;
+
+  boringBoard[idx] = boringCurrentPlayer;
+  document.getElementById('sarcasm-bar').textContent = '💭 ' + randomSarcasm();
+
+  const winner = checkBoringWinner();
+  if(winner){
+    boringGameActive = false;
+    renderBoringBoard();
+    showBoringWinner(winner);
+    if(boringMode==='online' && boringIsHost) pushBoringState();
+    return;
+  }
+
+  boringCurrentPlayer = boringCurrentPlayer==='X' ? 'O' : 'X';
+  renderBoringBoard();
+  updateBoringStatus();
+
+  if(boringMode==='online' && boringIsHost) pushBoringState();
+  if(boringMode==='cpu' && boringCurrentPlayer==='O' && boringGameActive){
+    setTimeout(makeBoringCPUMove, 600);
+  }
+}
+
+function makeBoringCPUMove(){
+  if(!boringGameActive || boringCurrentPlayer!=='O') return;
+  // Try win, block, centre, random
+  let move = findBoringBest('O') ?? findBoringBest('X') ?? (boringBoard[4]==='' ? 4 : null);
+  if(move===null){
+    const empty = boringBoard.map((v,i)=>v===''?i:-1).filter(i=>i>=0);
+    move = empty[Math.floor(Math.random()*empty.length)];
+  }
+  if(move!==null) makeBoringMove(move);
+}
+
+function findBoringBest(sym){
+  for(const [a,b,c] of WINS){
+    const line=[boringBoard[a],boringBoard[b],boringBoard[c]];
+    if(line.filter(x=>x===sym).length===2 && line.includes('')){
+      return [a,b,c][line.indexOf('')];
+    }
+  }
+  return null;
+}
+
+function checkBoringWinner(){
+  for(const [a,b,c] of WINS){
+    if(boringBoard[a] && boringBoard[a]===boringBoard[b] && boringBoard[a]===boringBoard[c])
+      return boringBoard[a];
+  }
+  if(boringBoard.every(c=>c!=='')) return 'D';
+  return null;
+}
+
+function updateBoringStatus(){
+  const xName = document.getElementById('boring-name-x').textContent;
+  const oName = document.getElementById('boring-name-o').textContent;
+  const name = boringCurrentPlayer==='X' ? xName : oName;
+  document.getElementById('boring-status').textContent = boringCurrentPlayer==='X'
+    ? `✕ ${name}'s turn` : `○ ${name}'s turn`;
+  document.getElementById('boring-badge-x').classList.toggle('active', boringCurrentPlayer==='X');
+  document.getElementById('boring-badge-o').classList.toggle('active', boringCurrentPlayer==='O');
+}
+
+function showBoringWinner(w){
+  const xName = document.getElementById('boring-name-x').textContent;
+  const oName = document.getElementById('boring-name-o').textContent;
+  const icon = document.getElementById('boring-winner-icon');
+  const text = document.getElementById('boring-winner-text');
+  const sub = document.getElementById('boring-winner-sub');
+  if(w==='D'){
+    icon.textContent='🤝';
+    text.textContent="It's a Draw!";
+    text.className='mega-winner-text draw';
+    sub.textContent=randomMsg(BORING_WIN_MSGS.draw);
+  } else {
+    const isX = w==='X';
+    const name = isX ? xName : oName;
+    const isCPU = boringMode==='cpu' && !isX;
+    icon.textContent = isCPU ? '🤖' : '🏆';
+    text.textContent = `${name} Wins!`;
+    text.className = `mega-winner-text ${w.toLowerCase()}`;
+    sub.textContent = isCPU ? randomMsg(BORING_WIN_MSGS.cpu_win) : randomMsg(BORING_WIN_MSGS.win);
+  }
+  document.getElementById('boring-winner-overlay').classList.add('show');
+}
+
+function playBoringAgain(){
+  document.getElementById('boring-winner-overlay').classList.remove('show');
+  const p1=document.getElementById('boring-name-x').textContent;
+  const p2=document.getElementById('boring-name-o').textContent;
+  initBoringGame(p1,p2);
+  if(boringMode==='online' && boringIsHost) pushBoringState();
+}
+
+function goBoringHome(){
+  boringDetachListeners();
+  if(boringIsHost && boringRoomCode) tttDb&&tttDb.ref('boring-rooms/'+boringRoomCode).remove();
+  else if(!boringIsHost && boringRoomCode && boringMyName) tttDb&&tttDb.ref('boring-rooms/'+boringRoomCode+'/guest').remove();
+  boringRoomCode='';boringIsHost=false;boringMyName='';
+  document.getElementById('boring-winner-overlay').classList.remove('show');
+  showScreen('screen-home');
+}
+
+function confirmBoringQuit(){
+  if(confirm('Quit? (You were probably losing anyway)')) goBoringHome();
+}
+
+// ── Boring Online (Firebase boring-rooms/ path) ──
+function boringDetachListeners(){
+  boringListeners.forEach(fn=>fn());
+  boringListeners=[];
+}
+
+function buildBoringState(){
+  return{board:[...boringBoard],currentPlayer:boringCurrentPlayer,gameActive:boringGameActive};
+}
+
+function applyBoringState(s){
+  boringBoard=[...s.board];
+  boringCurrentPlayer=s.currentPlayer;
+  boringGameActive=s.gameActive;
+  renderBoringBoard();
+  updateBoringStatus();
+  if(!boringGameActive){
+    const w=checkBoringWinner();
+    if(w) showBoringWinner(w);
+  }
+}
+
+function pushBoringState(){
+  if(!boringRoomCode||!boringIsHost) return;
+  tttDb.ref('boring-rooms/'+boringRoomCode+'/state').set(buildBoringState());
+}
+
+function goCreateBoring(){
+  const name=document.getElementById('boring-online-name').value.trim();
+  if(!name){toast('Enter your nickname!');return;}
+  initTttDb();
+  boringMyName=name;boringIsHost=true;boringMySymbol='X';
+  boringRoomCode=genCode();
+
+  tttDb.ref('boring-rooms/'+boringRoomCode).set({
+    host:name,status:'waiting',ts:Date.now()
+  }).then(()=>{
+    document.getElementById('boring-lobby-code').textContent=boringRoomCode;
+    showScreen('screen-boring-lobby');
+    document.getElementById('boring-lobby-status').textContent='⏳ Waiting for someone equally bored...';
+    toast('Room: '+boringRoomCode+' — share it!',3000);
+
+    const gRef=tttDb.ref('boring-rooms/'+boringRoomCode+'/guest');
+    const gl=gRef.on('value',snap=>{
+      const g=snap.val();if(!g)return;
+      document.getElementById('boring-lobby-status').textContent='✅ '+g.name+' joined! Prepare to be underwhelmed.';
+      setTimeout(()=>{
+        initBoringGame(boringMyName, g.name);
+        pushBoringState();
+      },700);
+    });
+    boringListeners.push(()=>gRef.off('value',gl));
+  }).catch(e=>toast('Error: '+e.message));
+}
+
+function goJoinBoring(){
+  const name=document.getElementById('boring-online-name').value.trim();
+  const code=document.getElementById('boring-join-code').value.trim().toUpperCase();
+  if(!name||!code){toast('Enter name and room code!');return;}
+  initTttDb();
+  boringMyName=name;boringIsHost=false;boringMySymbol='O';
+
+  tttDb.ref('boring-rooms/'+code).once('value').then(snap=>{
+    const room=snap.val();
+    if(!room){toast('Room not found!');return;}
+    boringRoomCode=code;
+    tttDb.ref('boring-rooms/'+code+'/guest').set({name});
+    tttDb.ref('boring-rooms/'+code+'/status').set('playing');
+
+    document.getElementById('boring-lobby-code').textContent=code;
+    document.getElementById('boring-lobby-status').textContent='✅ Joined! Brace yourself.';
+    showScreen('screen-boring-lobby');
+    toast('Joined room '+code,2000);
+
+    const sRef=tttDb.ref('boring-rooms/'+code+'/state');
+    const sl=sRef.on('value',snap=>{
+      const s=snap.val();if(!s)return;
+      if(!boringGameActive && s.gameActive){
+        initBoringGame(room.host, boringMyName);
+      }
+      applyBoringState(s);
+    });
+    boringListeners.push(()=>sRef.off('value',sl));
+  }).catch(e=>toast('Error: '+e.message));
+}
+
+function copyBoringCode(){
+  const code=boringRoomCode||document.getElementById('boring-lobby-code').textContent;
+  navigator.clipboard?.writeText(code).then(()=>toast('✅ Code copied!')).catch(()=>prompt('Share this code:',code));
+}
+
+</script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);min-height:100vh;font-family:'Segoe UI',sans-serif;color:white;display:flex;flex-direction:column;align-items:center;padding:16px}
@@ -102,6 +692,17 @@ input::placeholder{color:rgba(255,255,255,0.4)}
 .mode-btn-local{background:linear-gradient(135deg,#43e97b,#38f9d7);color:#1a1a2e}
 .mode-btn-online{background:linear-gradient(135deg,#667eea,#764ba2);color:white}
 .mode-btn-cpu{background:linear-gradient(135deg,#f7971e,#ffd200);color:#1a1a2e}
+.mode-btn-boring{background:linear-gradient(135deg,#636363,#4a4a4a);color:#ddd}
+.boring-strike{text-decoration:line-through;opacity:0.5}
+/* Boring TTT board */
+.boring-board{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;width:100%;max-width:280px;margin:0 auto}
+.boring-cell{aspect-ratio:1;border-radius:10px;background:rgba(255,255,255,0.07);border:none;font-size:2rem;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s,transform 0.1s;color:white}
+.boring-cell:active{transform:scale(0.88)}
+.boring-cell.x{color:#ff6b6b;background:rgba(255,107,107,0.18)}
+.boring-cell.o{color:#38f9d7;background:rgba(56,249,215,0.18)}
+.boring-cell.playable:not(.x):not(.o){background:rgba(67,233,123,0.12)}
+.boring-cell:disabled{cursor:default}
+.sarcasm-bar{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:10px 14px;text-align:center;font-size:0.78rem;font-style:italic;opacity:0.6;color:#aaa}
 .mode-icon{font-size:1.8rem}
 .mode-info{display:flex;flex-direction:column;gap:2px}
 .mode-title{font-size:1rem;font-weight:800}
@@ -130,6 +731,10 @@ input::placeholder{color:rgba(255,255,255,0.4)}
       <button class="mode-btn mode-btn-cpu" onclick="startCPU()">
         <span class="mode-icon">🤖</span>
         <span class="mode-info"><span class="mode-title">vs CPU</span><span class="mode-desc">Play against the computer</span></span>
+      </button>
+      <button class="mode-btn mode-btn-boring" onclick="showScreen('screen-boring-menu')">
+        <span class="mode-icon">😴</span>
+        <span class="mode-info"><span class="mode-title">The Boring Tic-Tac-Toe</span><span class="mode-desc">Just... normal tic-tac-toe. You asked.</span></span>
       </button>
     </div>
   </div>
@@ -686,6 +1291,377 @@ function goJoinOnline(){
 
   }).catch(e=>toast('Error: '+e.message));
 }
+
+// ══════════════════════════════
+// THE BORING TIC-TAC-TOE
+// ══════════════════════════════
+const SARCASM = [
+  '"The suspense is unbearable."',
+  '"A masterpiece of human strategy."',
+  '"Shakespeare himself could not write this drama."',
+  '"Historians will study this game for centuries."',
+  '"Every move — a work of art."',
+  '"Bold choice. Truly bold."',
+  '"X goes here. O goes there. Repeat until bored."',
+  '"This is peak entertainment."',
+  '"Your ancestors are watching. They are unimpressed."',
+  '"A nail-biter. Truly."',
+  '"The crowd goes... somewhere else."',
+  '"Pure, undistilled excitement."',
+];
+const BORING_WIN_MSGS = {
+  win: [
+    "Congratulations on winning the world's most predictable game.",
+    "You beat 3 in a row. Alert the media.",
+    "A stunning victory. Your legacy is secured.",
+    "The computer is devastated. Not really.",
+    "You win! Here is your trophy: 🏆 (it means nothing)",
+  ],
+  draw: [
+    "A draw. Neither of you could even win at THIS.",
+    "Both players were equally mediocre. Congratulations.",
+    "The game has ended in a tie. As it always does.",
+    "A perfect stalemate. A metaphor for your lives.",
+  ],
+  cpu_win: [
+    "You lost to a few lines of code. Incredible.",
+    "The machine wins. As always.",
+    "The CPU did not even try hard. It still won.",
+    "A computer defeated you at tic-tac-toe. Take that in.",
+  ]
+};
+
+let boringBoard = Array(9).fill('');
+let boringCurrentPlayer = 'X';
+let boringGameActive = false;
+let boringMode = 'local'; // local | cpu | online
+let boringMySymbol = 'X';
+let boringMyName = '';
+let boringIsHost = false;
+let boringRoomCode = '';
+let boringListeners = [];
+
+function randomSarcasm(){
+  return SARCASM[Math.floor(Math.random()*SARCASM.length)];
+}
+function randomMsg(arr){return arr[Math.floor(Math.random()*arr.length)];}
+
+function startBoringLocal(){
+  boringMode='local';boringMySymbol='X';
+  initBoringGame('Player 1','Player 2');
+}
+function startBoringCPU(){
+  boringMode='cpu';boringMySymbol='X';
+  initBoringGame('You','CPU 🤖');
+}
+
+function initBoringGame(p1, p2){
+  boringBoard=Array(9).fill('');
+  boringCurrentPlayer='X';
+  boringGameActive=true;
+  document.getElementById('boring-name-x').textContent=p1;
+  document.getElementById('boring-name-o').textContent=p2;
+  document.getElementById('boring-badge-x').classList.add('active');
+  document.getElementById('boring-badge-o').classList.remove('active');
+  document.getElementById('boring-winner-overlay').classList.remove('show');
+  document.getElementById('sarcasm-bar').textContent='💭 '+randomSarcasm();
+  renderBoringBoard();
+  updateBoringStatus();
+  showScreen('screen-boring-game');
+}
+
+function renderBoringBoard(){
+  const board = document.getElementById('boring-board');
+  board.innerHTML = '';
+  boringBoard.forEach((cell, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'boring-cell' + (cell ? ' '+cell.toLowerCase() : '') + (!cell && boringGameActive ? ' playable' : '');
+    btn.textContent = cell || '';
+    btn.disabled = !!cell || !boringGameActive;
+    if(!cell && boringGameActive) btn.onclick = () => makeBoringMove(i);
+    board.appendChild(btn);
+  });
+}
+
+function makeBoringMove(idx){
+  if(!boringGameActive) return;
+  if(boringBoard[idx]) return;
+  // Online: only move on your turn
+  if(boringMode==='online' && boringCurrentPlayer !== boringMySymbol) return;
+
+  boringBoard[idx] = boringCurrentPlayer;
+  document.getElementById('sarcasm-bar').textContent = '💭 ' + randomSarcasm();
+
+  const winner = checkBoringWinner();
+  if(winner){
+    boringGameActive = false;
+    renderBoringBoard();
+    showBoringWinner(winner);
+    if(boringMode==='online' && boringIsHost) pushBoringState();
+    return;
+  }
+
+  boringCurrentPlayer = boringCurrentPlayer==='X' ? 'O' : 'X';
+  renderBoringBoard();
+  updateBoringStatus();
+
+  if(boringMode==='online' && boringIsHost) pushBoringState();
+  if(boringMode==='cpu' && boringCurrentPlayer==='O' && boringGameActive){
+    setTimeout(makeBoringCPUMove, 600);
+  }
+}
+
+function makeBoringCPUMove(){
+  if(!boringGameActive || boringCurrentPlayer!=='O') return;
+  // Try win, block, centre, random
+  let move = findBoringBest('O') ?? findBoringBest('X') ?? (boringBoard[4]==='' ? 4 : null);
+  if(move===null){
+    const empty = boringBoard.map((v,i)=>v===''?i:-1).filter(i=>i>=0);
+    move = empty[Math.floor(Math.random()*empty.length)];
+  }
+  if(move!==null) makeBoringMove(move);
+}
+
+function findBoringBest(sym){
+  for(const [a,b,c] of WINS){
+    const line=[boringBoard[a],boringBoard[b],boringBoard[c]];
+    if(line.filter(x=>x===sym).length===2 && line.includes('')){
+      return [a,b,c][line.indexOf('')];
+    }
+  }
+  return null;
+}
+
+function checkBoringWinner(){
+  for(const [a,b,c] of WINS){
+    if(boringBoard[a] && boringBoard[a]===boringBoard[b] && boringBoard[a]===boringBoard[c])
+      return boringBoard[a];
+  }
+  if(boringBoard.every(c=>c!=='')) return 'D';
+  return null;
+}
+
+function updateBoringStatus(){
+  const xName = document.getElementById('boring-name-x').textContent;
+  const oName = document.getElementById('boring-name-o').textContent;
+  const name = boringCurrentPlayer==='X' ? xName : oName;
+  document.getElementById('boring-status').textContent = boringCurrentPlayer==='X'
+    ? `✕ ${name}'s turn` : `○ ${name}'s turn`;
+  document.getElementById('boring-badge-x').classList.toggle('active', boringCurrentPlayer==='X');
+  document.getElementById('boring-badge-o').classList.toggle('active', boringCurrentPlayer==='O');
+}
+
+function showBoringWinner(w){
+  const xName = document.getElementById('boring-name-x').textContent;
+  const oName = document.getElementById('boring-name-o').textContent;
+  const icon = document.getElementById('boring-winner-icon');
+  const text = document.getElementById('boring-winner-text');
+  const sub = document.getElementById('boring-winner-sub');
+  if(w==='D'){
+    icon.textContent='🤝';
+    text.textContent="It's a Draw!";
+    text.className='mega-winner-text draw';
+    sub.textContent=randomMsg(BORING_WIN_MSGS.draw);
+  } else {
+    const isX = w==='X';
+    const name = isX ? xName : oName;
+    const isCPU = boringMode==='cpu' && !isX;
+    icon.textContent = isCPU ? '🤖' : '🏆';
+    text.textContent = `${name} Wins!`;
+    text.className = `mega-winner-text ${w.toLowerCase()}`;
+    sub.textContent = isCPU ? randomMsg(BORING_WIN_MSGS.cpu_win) : randomMsg(BORING_WIN_MSGS.win);
+  }
+  document.getElementById('boring-winner-overlay').classList.add('show');
+}
+
+function playBoringAgain(){
+  document.getElementById('boring-winner-overlay').classList.remove('show');
+  const p1=document.getElementById('boring-name-x').textContent;
+  const p2=document.getElementById('boring-name-o').textContent;
+  initBoringGame(p1,p2);
+  if(boringMode==='online' && boringIsHost) pushBoringState();
+}
+
+function goBoringHome(){
+  boringDetachListeners();
+  if(boringIsHost && boringRoomCode) tttDb&&tttDb.ref('boring-rooms/'+boringRoomCode).remove();
+  else if(!boringIsHost && boringRoomCode && boringMyName) tttDb&&tttDb.ref('boring-rooms/'+boringRoomCode+'/guest').remove();
+  boringRoomCode='';boringIsHost=false;boringMyName='';
+  document.getElementById('boring-winner-overlay').classList.remove('show');
+  showScreen('screen-home');
+}
+
+function confirmBoringQuit(){
+  if(confirm('Quit? (You were probably losing anyway)')) goBoringHome();
+}
+
+// ── Boring Online (Firebase boring-rooms/ path) ──
+function boringDetachListeners(){
+  boringListeners.forEach(fn=>fn());
+  boringListeners=[];
+}
+
+function buildBoringState(){
+  return{board:[...boringBoard],currentPlayer:boringCurrentPlayer,gameActive:boringGameActive};
+}
+
+function applyBoringState(s){
+  boringBoard=[...s.board];
+  boringCurrentPlayer=s.currentPlayer;
+  boringGameActive=s.gameActive;
+  renderBoringBoard();
+  updateBoringStatus();
+  if(!boringGameActive){
+    const w=checkBoringWinner();
+    if(w) showBoringWinner(w);
+  }
+}
+
+function pushBoringState(){
+  if(!boringRoomCode||!boringIsHost) return;
+  tttDb.ref('boring-rooms/'+boringRoomCode+'/state').set(buildBoringState());
+}
+
+function goCreateBoring(){
+  const name=document.getElementById('boring-online-name').value.trim();
+  if(!name){toast('Enter your nickname!');return;}
+  initTttDb();
+  boringMyName=name;boringIsHost=true;boringMySymbol='X';
+  boringRoomCode=genCode();
+
+  tttDb.ref('boring-rooms/'+boringRoomCode).set({
+    host:name,status:'waiting',ts:Date.now()
+  }).then(()=>{
+    document.getElementById('boring-lobby-code').textContent=boringRoomCode;
+    showScreen('screen-boring-lobby');
+    document.getElementById('boring-lobby-status').textContent='⏳ Waiting for someone equally bored...';
+    toast('Room: '+boringRoomCode+' — share it!',3000);
+
+    const gRef=tttDb.ref('boring-rooms/'+boringRoomCode+'/guest');
+    const gl=gRef.on('value',snap=>{
+      const g=snap.val();if(!g)return;
+      document.getElementById('boring-lobby-status').textContent='✅ '+g.name+' joined! Prepare to be underwhelmed.';
+      setTimeout(()=>{
+        initBoringGame(boringMyName, g.name);
+        pushBoringState();
+      },700);
+    });
+    boringListeners.push(()=>gRef.off('value',gl));
+  }).catch(e=>toast('Error: '+e.message));
+}
+
+function goJoinBoring(){
+  const name=document.getElementById('boring-online-name').value.trim();
+  const code=document.getElementById('boring-join-code').value.trim().toUpperCase();
+  if(!name||!code){toast('Enter name and room code!');return;}
+  initTttDb();
+  boringMyName=name;boringIsHost=false;boringMySymbol='O';
+
+  tttDb.ref('boring-rooms/'+code).once('value').then(snap=>{
+    const room=snap.val();
+    if(!room){toast('Room not found!');return;}
+    boringRoomCode=code;
+    tttDb.ref('boring-rooms/'+code+'/guest').set({name});
+    tttDb.ref('boring-rooms/'+code+'/status').set('playing');
+
+    document.getElementById('boring-lobby-code').textContent=code;
+    document.getElementById('boring-lobby-status').textContent='✅ Joined! Brace yourself.';
+    showScreen('screen-boring-lobby');
+    toast('Joined room '+code,2000);
+
+    const sRef=tttDb.ref('boring-rooms/'+code+'/state');
+    const sl=sRef.on('value',snap=>{
+      const s=snap.val();if(!s)return;
+      if(!boringGameActive && s.gameActive){
+        initBoringGame(room.host, boringMyName);
+      }
+      applyBoringState(s);
+    });
+    boringListeners.push(()=>sRef.off('value',sl));
+  }).catch(e=>toast('Error: '+e.message));
+}
+
+function copyBoringCode(){
+  const code=boringRoomCode||document.getElementById('boring-lobby-code').textContent;
+  navigator.clipboard?.writeText(code).then(()=>toast('✅ Code copied!')).catch(()=>prompt('Share this code:',code));
+}
+
 </script>
+
+<!-- BORING MENU -->
+<div class="screen" id="screen-boring-menu">
+  <div class="card" style="text-align:center">
+    <div style="font-size:2rem;margin-bottom:6px">😴</div>
+    <div style="font-size:1.1rem;font-weight:800;margin-bottom:4px">The <span class="boring-strike">Exciting</span> Boring Tic-Tac-Toe</div>
+    <div style="font-size:0.78rem;opacity:0.5;font-style:italic;margin-bottom:16px">"A game so simple, even your grandma beat the AI"</div>
+    <div class="mode-btns">
+      <button class="mode-btn mode-btn-local" onclick="startBoringLocal()">
+        <span class="mode-icon">📱</span>
+        <span class="mode-info"><span class="mode-title">Pass & Play</span><span class="mode-desc">2 players, 1 phone, 0 excitement</span></span>
+      </button>
+      <button class="mode-btn mode-btn-cpu" onclick="startBoringCPU()">
+        <span class="mode-icon">🤖</span>
+        <span class="mode-info"><span class="mode-title">vs CPU</span><span class="mode-desc">Lose to a machine in 9 moves</span></span>
+      </button>
+      <button class="mode-btn mode-btn-online" onclick="showScreen('screen-boring-online')">
+        <span class="mode-icon">🌐</span>
+        <span class="mode-info"><span class="mode-title">Play Online</span><span class="mode-desc">Bore a friend remotely</span></span>
+      </button>
+    </div>
+  </div>
+  <button class="btn btn-secondary" onclick="showScreen('screen-home')">← Back to the fun game</button>
+</div>
+
+<!-- BORING ONLINE SETUP -->
+<div class="screen" id="screen-boring-online">
+  <div class="card">
+    <div style="font-size:0.75rem;opacity:0.6;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Boring Online Setup</div>
+    <div style="font-size:0.72rem;font-style:italic;opacity:0.4;margin-bottom:12px">"Congratulations on making this choice"</div>
+    <input id="boring-online-name" placeholder="Your nickname..." maxlength="16"/>
+    <button class="btn btn-primary" onclick="goCreateBoring()">🏠 Create Room</button>
+    <input id="boring-join-code" placeholder="Enter room code..." maxlength="6" style="text-transform:uppercase;letter-spacing:4px;text-align:center"/>
+    <button class="btn btn-secondary" onclick="goJoinBoring()">🚪 Join Room</button>
+    <button class="btn btn-secondary" onclick="showScreen('screen-boring-menu')">← Back</button>
+  </div>
+</div>
+
+<!-- BORING LOBBY -->
+<div class="screen" id="screen-boring-lobby">
+  <div class="card" style="text-align:center">
+    <div style="font-size:0.75rem;opacity:0.6;text-transform:uppercase;letter-spacing:1px">Room Code</div>
+    <div id="boring-lobby-code" style="font-size:2rem;font-weight:900;letter-spacing:8px;color:#43e97b;padding:10px 0">-----</div>
+    <button class="btn btn-secondary" style="font-size:0.85rem;padding:10px;margin-top:4px" onclick="copyBoringCode()">📋 Copy Code</button>
+  </div>
+  <div class="card" style="text-align:center;opacity:0.7;font-size:0.9rem" id="boring-lobby-status">
+    ⏳ Waiting for someone equally bored...
+  </div>
+  <button class="btn btn-secondary" onclick="showScreen('screen-boring-menu')">← Back</button>
+</div>
+
+<!-- BORING GAME -->
+<div class="screen" id="screen-boring-game">
+  <div class="player-badges">
+    <div class="player-badge x active" id="boring-badge-x">✕ <span id="boring-name-x">Player 1</span></div>
+    <div class="player-badge o" id="boring-badge-o">○ <span id="boring-name-o">Player 2</span></div>
+  </div>
+  <div class="status-bar" id="boring-status">Starting this thrilling game...</div>
+  <div class="sarcasm-bar" id="sarcasm-bar">💭 "The suspense is unbearable."</div>
+  <div style="display:flex;justify-content:center;padding:16px 0">
+    <div class="boring-board" id="boring-board"></div>
+  </div>
+  <button class="btn btn-secondary" style="margin-top:8px" onclick="confirmBoringQuit()">✕ End the Suffering</button>
+</div>
+
+<!-- BORING WINNER -->
+<div class="mega-winner" id="boring-winner-overlay">
+  <div class="mega-winner-box">
+    <div class="mega-winner-icon" id="boring-winner-icon">🏆</div>
+    <div class="mega-winner-text" id="boring-winner-text">X Wins!</div>
+    <div style="opacity:0.6;font-size:0.85rem;font-style:italic" id="boring-winner-sub"></div>
+    <button class="btn btn-primary" onclick="playBoringAgain()">🔄 Do It Again (Why?)</button>
+    <button class="btn btn-secondary" onclick="goBoringHome()">🏠 Back to Real Games</button>
+  </div>
+</div>
+
 </body>
 </html>
