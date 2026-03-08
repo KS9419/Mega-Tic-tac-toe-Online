@@ -557,6 +557,8 @@ function goHome(){
   clearTimer();closeBoardPicker();
   document.getElementById('winner-overlay').classList.remove('show');
   if(onlineChannel){sb.removeChannel(onlineChannel);onlineChannel=null;}
+  if(typeof pollInterval!=='undefined'&&pollInterval){clearInterval(pollInterval);pollInterval=null;}
+  roomId='';roomCode='';
   showScreen('screen-home');
 }
 
@@ -587,12 +589,22 @@ async function goCreateOnline(){
   const name=document.getElementById('online-name').value.trim();
   if(!name){toast('Enter your nickname!');return;}
   myName=name;isHost=true;mySymbol='X';roomCode=genCode();
-  const{data,error}=await sb.from('rooms').insert({
+  // Step 1: insert the room
+  const{data:insertData,error:insertError}=await sb.from('rooms').insert({
     code:roomCode,host_id:uid(),status:'waiting',
     game_state:buildState(),player_x:myName,player_o:''
-  }).select().single();
-  if(error){toast('Error creating room');console.error(error);return;}
-  roomId=data.id;
+  }).select();
+  if(insertError){toast('Error creating room: '+insertError.message);console.error(insertError);return;}
+  // Step 2: get the id — handle both array and single object responses
+  const row=Array.isArray(insertData)?insertData[0]:insertData;
+  if(!row||!row.id){
+    // Fallback: fetch the room we just created by code
+    const{data:fetchData,error:fetchError}=await sb.from('rooms').select('id').eq('code',roomCode).single();
+    if(fetchError||!fetchData){toast('Room created but could not retrieve ID. Try again.');console.error(fetchError);return;}
+    roomId=fetchData.id;
+  } else {
+    roomId=row.id;
+  }
   document.getElementById('lobby-code').textContent=roomCode;
   showScreen('screen-lobby');
   subscribeOnline();
@@ -620,12 +632,29 @@ async function pushOnlineState(){
   }).eq('id',roomId);
 }
 
+let pollInterval=null;
 function subscribeOnline(){
   if(onlineChannel) sb.removeChannel(onlineChannel);
+  if(pollInterval) clearInterval(pollInterval);
   onlineChannel=sb.channel('mttt:'+roomId)
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'rooms',filter:`id=eq.${roomId}`},
       e=>handleOnlineUpdate(e.new))
-    .subscribe();
+    .subscribe(status=>{
+      // If Realtime isn't available, fall back to polling every 2 seconds
+      if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'){
+        toast('Live sync unavailable, using polling...',3000);
+        pollInterval=setInterval(async()=>{
+          const{data}=await sb.from('rooms').select('*').eq('id',roomId).single();
+          if(data) handleOnlineUpdate(data);
+        },2000);
+      }
+    });
+  // Also start polling as a safety net regardless
+  pollInterval=setInterval(async()=>{
+    if(!roomId) return;
+    const{data}=await sb.from('rooms').select('*').eq('id',roomId).single();
+    if(data) handleOnlineUpdate(data);
+  },2500);
 }
 
 async function handleOnlineUpdate(room){
