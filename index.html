@@ -4,7 +4,8 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
 <title>Mega Tic-Tac-Toe Online</title>
-<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);min-height:100vh;font-family:'Segoe UI',sans-serif;color:white;display:flex;flex-direction:column;align-items:center;padding:16px}
@@ -212,8 +213,23 @@ let megaWinner='',mySymbol='X',gameActive=false;
 let roomCode='',isHost=false,myName='';
 let timerInterval=null,timerSeconds=0,timerMax=0;
 let popupTimerInterval=null;
-// PeerJS
-let peer=null,mpConn=null;
+// Firebase — uses ttt-rooms/ path (separate from DnD which uses dnd-rooms/)
+const TTT_FB_CONFIG={
+  apiKey:"AIzaSyCwXhcJjUk83pUk7VrOntxY04MZbTh-gXg",
+  authDomain:"dnd-ai-dungeon-master-fca4c.firebaseapp.com",
+  databaseURL:"https://dnd-ai-dungeon-master-fca4c-default-rtdb.firebaseio.com",
+  projectId:"dnd-ai-dungeon-master-fca4c",
+  storageBucket:"dnd-ai-dungeon-master-fca4c.firebasestorage.app",
+  messagingSenderId:"567765507385",
+  appId:"1:567765507385:web:50b11c62de821739a49ce8"
+};
+let tttDb=null;
+let tttListeners=[];
+function initTttDb(){
+  if(tttDb)return;
+  try{firebase.initializeApp(TTT_FB_CONFIG,'ttt');}catch(e){}
+  tttDb=firebase.app('ttt').database();
+}
 
 // ── Utils ─────────────────────────────────────────────
 function uid(){return crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now()}
@@ -555,9 +571,10 @@ function playAgain(){
 function goHome(){
   clearTimer();closeBoardPicker();
   document.getElementById('winner-overlay').classList.remove('show');
-  if(mpConn){try{mpConn.close();}catch(e){} mpConn=null;}
-  if(peer){try{peer.destroy();}catch(e){} peer=null;}
-  roomCode='';
+  tttDetachListeners();
+  if(isHost&&roomCode) tttDb&&tttDb.ref('ttt-rooms/'+roomCode).remove();
+  else if(!isHost&&roomCode&&myName) tttDb&&tttDb.ref('ttt-rooms/'+roomCode+'/guest').remove();
+  roomCode='';isHost=false;myName='';
   showScreen('screen-home');
 }
 
@@ -565,7 +582,12 @@ function confirmQuit(){if(confirm('Quit the current game?')) goHome();}
 function startLocal(){initGame('Player 1','Player 2','local','X')}
 function startCPU(){initGame('You','CPU 🤖','cpu','X')}
 
-// ── Online via PeerJS ─────────────────────────────────
+// ── Online via Firebase (ttt-rooms/ path) ─────────────
+function tttDetachListeners(){
+  tttListeners.forEach(fn=>fn());
+  tttListeners=[];
+}
+
 function buildState(){
   return{
     smallBoards:smallBoards.map(b=>[...b]),
@@ -585,121 +607,84 @@ function applyState(s){
 }
 
 function pushOnlineState(){
-  if(mpConn&&mpConn.open){
-    mpConn.send({type:'state',state:buildState()});
-  }
-}
-
-function mpSend(data){
-  if(mpConn&&mpConn.open) mpConn.send(data);
-}
-
-function handleMpData(data){
-  if(data.type==='joined'){
-    // Host receives this when opponent joins
-    const oppName=data.name;
-    document.getElementById('lobby-status').textContent='✅ '+oppName+' joined! Starting game...';
-    setTimeout(()=>{
-      initGame(myName,oppName,'online','X');
-      pushOnlineState();
-    },800);
-  } else if(data.type==='start'){
-    // Guest receives this: start the game
-    initGame(data.hostName,myName,'online','O');
-    applyState(data.state);
-    renderMega();updateStatus();
-    if(freeChoice&&isMyTurn()) openBoardPicker();
-    else if(!freeChoice) startTurnTimer();
-  } else if(data.type==='state'){
-    clearTimer();closeBoardPicker();
-    applyState(data.state);
-    renderMega();updateStatus();
-    if(megaWinner){showWinner(megaWinner);return;}
-    if(freeChoice&&isMyTurn()) openBoardPicker();
-    else if(!freeChoice&&gameActive) startTurnTimer();
-  } else if(data.type==='restart'){
-    applyState(data.state);
-    renderMega();updateStatus();startTurnTimer();
-  }
+  if(!roomCode||!isHost)return;
+  tttDb.ref('ttt-rooms/'+roomCode+'/state').set(buildState());
 }
 
 function goCreateOnline(){
   const name=document.getElementById('online-name').value.trim();
   if(!name){toast('Enter your nickname!');return;}
+  initTttDb();
   myName=name;isHost=true;mySymbol='X';
+  roomCode=genCode();
 
-  if(typeof Peer==='undefined'){toast('Connection library not loaded, try refreshing!');return;}
-  if(peer){try{peer.destroy();}catch(e){}}
-
-  toast('Creating room...',60000);
-  peer=new Peer();
-
-  peer.on('error',e=>{
-    toast('Connection error: '+e.type);
-    console.error(e);
-  });
-
-  peer.on('open',id=>{
-    roomCode=id;
-    // Show a short code (last 6 chars uppercase) for easy sharing
-    roomCode=id;
-    document.getElementById('lobby-code').textContent=id;
+  tttDb.ref('ttt-rooms/'+roomCode).set({
+    host:myName,status:'waiting',
+    state:buildState(),ts:Date.now()
+  }).then(()=>{
+    document.getElementById('lobby-code').textContent=roomCode;
     showScreen('screen-lobby');
-    document.getElementById('lobby-status').textContent='⏳ Tap Copy Code and send to your friend!';
-    toast('Room ready! Copy and share the code.',3000);
-  });
+    document.getElementById('lobby-status').textContent='⏳ Waiting for opponent to join...';
+    toast('Room ready! Share code: '+roomCode,3000);
 
-  peer.on('connection',conn=>{
-    mpConn=conn;
-    conn.on('open',()=>{
-      conn.on('data',handleMpData);
-      conn.on('close',()=>{if(mode==='online')toast('Opponent disconnected!');});
+    // Watch for guest joining
+    const guestRef=tttDb.ref('ttt-rooms/'+roomCode+'/guest');
+    const gl=guestRef.on('value',snap=>{
+      const g=snap.val();
+      if(!g)return;
+      document.getElementById('lobby-status').textContent='✅ '+g.name+' joined! Starting...';
+      setTimeout(()=>{
+        initGame(myName,g.name,'online','X');
+        pushOnlineState();
+      },600);
     });
-    conn.on('error',e=>console.error('conn error',e));
-  });
+    tttListeners.push(()=>guestRef.off('value',gl));
+
+  }).catch(e=>toast('Error: '+e.message));
 }
 
 function goJoinOnline(){
   const name=document.getElementById('online-name').value.trim();
-  let code=document.getElementById('join-code').value.trim();
+  const code=document.getElementById('join-code').value.trim().toUpperCase();
   if(!name){toast('Enter your nickname!');return;}
   if(!code){toast('Enter room code!');return;}
+  initTttDb();
   myName=name;isHost=false;mySymbol='O';
 
-  if(typeof Peer==='undefined'){toast('Connection library not loaded, try refreshing!');return;}
-  if(peer){try{peer.destroy();}catch(e){}}
+  tttDb.ref('ttt-rooms/'+code).once('value').then(snap=>{
+    const room=snap.val();
+    if(!room){toast('Room not found! Check the code.');return;}
+    if(room.status==='playing'){toast('Game already started!');return;}
+    roomCode=code;
 
-  toast('Connecting...',60000);
-  peer=new Peer();
+    // Register as guest
+    tttDb.ref('ttt-rooms/'+code+'/guest').set({name});
+    tttDb.ref('ttt-rooms/'+code+'/status').set('playing');
 
-  peer.on('error',e=>{
-    toast('Could not connect — check the code and try again.');
-    console.error(e);
-  });
+    document.getElementById('lobby-code').textContent=code;
+    document.getElementById('lobby-status').textContent='✅ Joined! Waiting for host...';
+    showScreen('screen-lobby');
+    toast('Joined room '+code+'!',2000);
 
-  peer.on('open',()=>{
-    // code might be short (6 chars) or full peer id
-    // Try connecting directly — if host shared short code we need full id
-    // We'll try the raw code first; if it fails user should share full link
-    const conn=peer.connect(code,{reliable:true});
-    mpConn=conn;
-
-    conn.on('open',()=>{
-      toast('Connected! Waiting for host to start...',4000);
-      showScreen('screen-lobby');
-      document.getElementById('lobby-code').textContent=code;
-      document.getElementById('lobby-status').textContent='✅ Connected! Host is starting the game...';
-      conn.on('data',handleMpData);
-      conn.on('close',()=>{if(mode==='online')toast('Host disconnected!');});
-      // Tell host we joined
-      conn.send({type:'joined',name:myName});
+    // Watch for game state updates from host
+    const stateRef=tttDb.ref('ttt-rooms/'+code+'/state');
+    const sl=stateRef.on('value',snap=>{
+      const s=snap.val();
+      if(!s)return;
+      // If game not started yet on our side, start it
+      if(!gameActive&&s.gameActive){
+        initGame(room.host,myName,'online','O');
+      }
+      clearTimer();closeBoardPicker();
+      applyState(s);
+      renderMega();updateStatus();
+      if(megaWinner){showWinner(megaWinner);return;}
+      if(freeChoice&&isMyTurn()) openBoardPicker();
+      else if(!freeChoice&&gameActive) startTurnTimer();
     });
+    tttListeners.push(()=>stateRef.off('value',sl));
 
-    conn.on('error',e=>{
-      toast('Could not connect — make sure the code is correct!');
-      console.error(e);
-    });
-  });
+  }).catch(e=>toast('Error: '+e.message));
 }
 </script>
 </body>
