@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
 <title>Mega Tic-Tac-Toe Online</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);min-height:100vh;font-family:'Segoe UI',sans-serif;color:white;display:flex;flex-direction:column;align-items:center;padding:16px}
@@ -145,7 +145,7 @@ input::placeholder{color:rgba(255,255,255,0.4)}
     <div style="font-size:0.75rem;opacity:0.6;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Play Online</div>
     <input id="online-name" placeholder="Your nickname..." maxlength="16"/>
     <button class="btn btn-primary" onclick="goCreateOnline()">🏠 Create Room</button>
-    <input id="join-code" placeholder="Enter room code..." maxlength="6" style="text-transform:uppercase;letter-spacing:4px;text-align:center"/>
+    <input id="join-code" placeholder="Enter room code..." maxlength="30" style="text-transform:uppercase;letter-spacing:2px;text-align:center"/>
     <button class="btn btn-secondary" onclick="goJoinOnline()">🚪 Join Room</button>
     <button class="btn btn-secondary" onclick="showScreen('screen-home')">← Back</button>
   </div>
@@ -201,9 +201,6 @@ input::placeholder{color:rgba(255,255,255,0.4)}
 </div>
 
 <script>
-const SUPABASE_URL='https://ricskwxzovtfxyyfdbcr.supabase.co';
-const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpY3Nrd3h6b3Z0Znh5eWZkYmNyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4ODc1NTEsImV4cCI6MjA4ODQ2MzU1MX0.YN50vzZF8DY0tf5_jPhaOinszn90Q9MXpPtg_NV_d5I';
-const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const WINS=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
 const BOARD_NAMES=['Top Left','Top Center','Top Right','Mid Left','Center','Mid Right','Bot Left','Bot Center','Bot Right'];
 
@@ -212,9 +209,11 @@ let mode='',currentPlayer='X',activeBoard=4,freeChoice=false,pendingBoard=-1;
 let smallBoards=Array(9).fill(null).map(()=>Array(9).fill(''));
 let boardWinners=Array(9).fill('');
 let megaWinner='',mySymbol='X',gameActive=false;
-let roomId='',roomCode='',isHost=false,myName='',onlineChannel=null;
+let roomCode='',isHost=false,myName='';
 let timerInterval=null,timerSeconds=0,timerMax=0;
 let popupTimerInterval=null;
+// PeerJS
+let peer=null,mpConn=null;
 
 // ── Utils ─────────────────────────────────────────────
 function uid(){return crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now()}
@@ -556,9 +555,9 @@ function playAgain(){
 function goHome(){
   clearTimer();closeBoardPicker();
   document.getElementById('winner-overlay').classList.remove('show');
-  if(onlineChannel){sb.removeChannel(onlineChannel);onlineChannel=null;}
-  if(typeof pollInterval!=='undefined'&&pollInterval){clearInterval(pollInterval);pollInterval=null;}
-  roomId='';roomCode='';
+  if(mpConn){try{mpConn.close();}catch(e){} mpConn=null;}
+  if(peer){try{peer.destroy();}catch(e){} peer=null;}
+  roomCode='';
   showScreen('screen-home');
 }
 
@@ -566,7 +565,7 @@ function confirmQuit(){if(confirm('Quit the current game?')) goHome();}
 function startLocal(){initGame('Player 1','Player 2','local','X')}
 function startCPU(){initGame('You','CPU 🤖','cpu','X')}
 
-// ── Online ────────────────────────────────────────────
+// ── Online via PeerJS ─────────────────────────────────
 function buildState(){
   return{
     smallBoards:smallBoards.map(b=>[...b]),
@@ -585,95 +584,123 @@ function applyState(s){
   gameActive=s.gameActive;
 }
 
-async function goCreateOnline(){
-  const name=document.getElementById('online-name').value.trim();
-  if(!name){toast('Enter your nickname!');return;}
-  myName=name;isHost=true;mySymbol='X';roomCode=genCode();
-  // Step 1: insert the room
-  const{data:insertData,error:insertError}=await sb.from('rooms').insert({
-    code:roomCode,host_id:uid(),status:'waiting',
-    game_state:buildState(),player_x:myName,player_o:''
-  }).select();
-  if(insertError){toast('Error creating room: '+insertError.message);console.error(insertError);return;}
-  // Step 2: get the id — handle both array and single object responses
-  const row=Array.isArray(insertData)?insertData[0]:insertData;
-  if(!row||!row.id){
-    // Fallback: fetch the room we just created by code
-    const{data:fetchData,error:fetchError}=await sb.from('rooms').select('id').eq('code',roomCode).single();
-    if(fetchError||!fetchData){toast('Room created but could not retrieve ID. Try again.');console.error(fetchError);return;}
-    roomId=fetchData.id;
-  } else {
-    roomId=row.id;
+function pushOnlineState(){
+  if(mpConn&&mpConn.open){
+    mpConn.send({type:'state',state:buildState()});
   }
-  document.getElementById('lobby-code').textContent=roomCode;
-  showScreen('screen-lobby');
-  subscribeOnline();
 }
 
-async function goJoinOnline(){
+function mpSend(data){
+  if(mpConn&&mpConn.open) mpConn.send(data);
+}
+
+function handleMpData(data){
+  if(data.type==='joined'){
+    // Host receives this when opponent joins
+    const oppName=data.name;
+    document.getElementById('lobby-status').textContent='✅ '+oppName+' joined! Starting game...';
+    setTimeout(()=>{
+      initGame(myName,oppName,'online','X');
+      pushOnlineState();
+    },800);
+  } else if(data.type==='start'){
+    // Guest receives this: start the game
+    initGame(data.hostName,myName,'online','O');
+    applyState(data.state);
+    renderMega();updateStatus();
+    if(freeChoice&&isMyTurn()) openBoardPicker();
+    else if(!freeChoice) startTurnTimer();
+  } else if(data.type==='state'){
+    clearTimer();closeBoardPicker();
+    applyState(data.state);
+    renderMega();updateStatus();
+    if(megaWinner){showWinner(megaWinner);return;}
+    if(freeChoice&&isMyTurn()) openBoardPicker();
+    else if(!freeChoice&&gameActive) startTurnTimer();
+  } else if(data.type==='restart'){
+    applyState(data.state);
+    renderMega();updateStatus();startTurnTimer();
+  }
+}
+
+function goCreateOnline(){
   const name=document.getElementById('online-name').value.trim();
-  const code=document.getElementById('join-code').value.trim().toUpperCase();
+  if(!name){toast('Enter your nickname!');return;}
+  myName=name;isHost=true;mySymbol='X';
+
+  if(typeof Peer==='undefined'){toast('Connection library not loaded, try refreshing!');return;}
+  if(peer){try{peer.destroy();}catch(e){}}
+
+  toast('Creating room...',60000);
+  peer=new Peer();
+
+  peer.on('error',e=>{
+    toast('Connection error: '+e.type);
+    console.error(e);
+  });
+
+  peer.on('open',id=>{
+    roomCode=id;
+    // Show a short code (last 6 chars uppercase) for easy sharing
+    const shortCode=id.slice(-6).toUpperCase();
+    document.getElementById('lobby-code').textContent=shortCode;
+    document.getElementById('lobby-code').setAttribute('data-fullid',id);
+    showScreen('screen-lobby');
+    document.getElementById('lobby-status').textContent='⏳ Waiting for opponent...';
+    toast('Room ready! Share the code.',3000);
+  });
+
+  peer.on('connection',conn=>{
+    mpConn=conn;
+    conn.on('open',()=>{
+      conn.on('data',handleMpData);
+      conn.on('close',()=>{if(mode==='online')toast('Opponent disconnected!');});
+    });
+    conn.on('error',e=>console.error('conn error',e));
+  });
+}
+
+function goJoinOnline(){
+  const name=document.getElementById('online-name').value.trim();
+  let code=document.getElementById('join-code').value.trim();
   if(!name){toast('Enter your nickname!');return;}
   if(!code){toast('Enter room code!');return;}
   myName=name;isHost=false;mySymbol='O';
-  const{data:room,error}=await sb.from('rooms').select('*').eq('code',code).single();
-  if(error||!room){toast('Room not found!');return;}
-  if(room.status!=='waiting'){toast('Game already started!');return;}
-  roomId=room.id;roomCode=code;
-  await sb.from('rooms').update({player_o:myName,status:'playing'}).eq('id',roomId);
-  subscribeOnline();
-  initGame(room.player_x,myName,'online','O');
-}
 
-async function pushOnlineState(){
-  await sb.from('rooms').update({
-    game_state:buildState(),
-    status:gameActive?'playing':'finished'
-  }).eq('id',roomId);
-}
+  if(typeof Peer==='undefined'){toast('Connection library not loaded, try refreshing!');return;}
+  if(peer){try{peer.destroy();}catch(e){}}
 
-let pollInterval=null;
-function subscribeOnline(){
-  if(onlineChannel) sb.removeChannel(onlineChannel);
-  if(pollInterval) clearInterval(pollInterval);
-  onlineChannel=sb.channel('mttt:'+roomId)
-    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'rooms',filter:`id=eq.${roomId}`},
-      e=>handleOnlineUpdate(e.new))
-    .subscribe(status=>{
-      // If Realtime isn't available, fall back to polling every 2 seconds
-      if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'){
-        toast('Live sync unavailable, using polling...',3000);
-        pollInterval=setInterval(async()=>{
-          const{data}=await sb.from('rooms').select('*').eq('id',roomId).single();
-          if(data) handleOnlineUpdate(data);
-        },2000);
-      }
+  toast('Connecting...',60000);
+  peer=new Peer();
+
+  peer.on('error',e=>{
+    toast('Could not connect — check the code and try again.');
+    console.error(e);
+  });
+
+  peer.on('open',()=>{
+    // code might be short (6 chars) or full peer id
+    // Try connecting directly — if host shared short code we need full id
+    // We'll try the raw code first; if it fails user should share full link
+    const conn=peer.connect(code,{reliable:true});
+    mpConn=conn;
+
+    conn.on('open',()=>{
+      toast('Connected! Waiting for host to start...',4000);
+      showScreen('screen-lobby');
+      document.getElementById('lobby-code').textContent=code.slice(-6).toUpperCase();
+      document.getElementById('lobby-status').textContent='✅ Connected! Host is starting the game...';
+      conn.on('data',handleMpData);
+      conn.on('close',()=>{if(mode==='online')toast('Host disconnected!');});
+      // Tell host we joined
+      conn.send({type:'joined',name:myName});
     });
-  // Also start polling as a safety net regardless
-  pollInterval=setInterval(async()=>{
-    if(!roomId) return;
-    const{data}=await sb.from('rooms').select('*').eq('id',roomId).single();
-    if(data) handleOnlineUpdate(data);
-  },2500);
-}
 
-async function handleOnlineUpdate(room){
-  if(!room) return;
-  if(room.status==='playing'&&document.getElementById('screen-lobby').classList.contains('active')){
-    initGame(myName,room.player_o,'online','X');
-    return;
-  }
-  if(room.game_state&&(room.status==='playing'||room.status==='finished')){
-    clearTimer();closeBoardPicker();
-    applyState(room.game_state);
-    renderMega();updateStatus();
-    if(megaWinner){showWinner(megaWinner);return;}
-    if(freeChoice&&isMyTurn()){
-      openBoardPicker();
-    } else if(!freeChoice){
-      startTurnTimer();
-    }
-  }
+    conn.on('error',e=>{
+      toast('Could not connect — make sure the code is correct!');
+      console.error(e);
+    });
+  });
 }
 </script>
 </body>
