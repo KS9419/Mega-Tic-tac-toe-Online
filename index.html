@@ -155,7 +155,7 @@ input::placeholder{color:rgba(255,255,255,0.4)}
 <div class="screen" id="screen-lobby">
   <div class="card" style="text-align:center">
     <div style="font-size:0.75rem;opacity:0.6;text-transform:uppercase;letter-spacing:1px">Room Code</div>
-    <div class="room-code" id="lobby-code">-----</div>
+    <div id="lobby-code" style="font-size:0.75rem;font-family:monospace;color:#43e97b;text-align:center;padding:12px 8px;word-break:break-all;background:rgba(0,0,0,0.3);border-radius:8px;border:1px solid rgba(67,233,123,0.3);letter-spacing:1px;line-height:1.5">-----</div>
     <button class="btn btn-secondary" style="font-size:0.85rem;padding:10px;margin-top:4px" onclick="copyLink()">📋 Copy Invite Link</button>
   </div>
   <div class="card" style="text-align:center;opacity:0.7;font-size:0.9rem" id="lobby-status">
@@ -220,7 +220,7 @@ function uid(){return crypto.randomUUID?crypto.randomUUID():Math.random().toStri
 function genCode(){const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let s='';for(let i=0;i<5;i++)s+=c[~~(Math.random()*c.length)];return s}
 function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active')}
 function toast(msg,dur=2500){const t=document.getElementById('toast');t.textContent=msg;t.style.display='block';clearTimeout(t._t);t._t=setTimeout(()=>t.style.display='none',dur)}
-function copyLink(){const url=`${location.origin}${location.pathname}?room=${roomCode}`;navigator.clipboard.writeText(url).then(()=>toast('✅ Link copied!')).catch(()=>toast('Code: '+roomCode))}
+function copyLink(){navigator.clipboard.writeText(roomCode).then(()=>toast('✅ Code copied! Send it to your friend.')).catch(()=>{prompt('Copy this code and send to your friend:',roomCode);})}
 (()=>{const p=new URLSearchParams(location.search);if(p.get('room'))document.getElementById('join-code').value=p.get('room')})();
 function checkWinner(cells){for(const[a,b,c]of WINS)if(cells[a]&&cells[a]===cells[b]&&cells[a]===cells[c])return cells[a];if(cells.every(c=>c!==''))return'D';return'';}
 function isMyTurn(){return mode==='local'||(mode==='cpu'&&currentPlayer==='X')||(mode==='online'&&currentPlayer===mySymbol)}
@@ -642,12 +642,11 @@ function goCreateOnline(){
   peer.on('open',id=>{
     roomCode=id;
     // Show a short code (last 6 chars uppercase) for easy sharing
-    const shortCode=id.slice(-6).toUpperCase();
-    document.getElementById('lobby-code').textContent=shortCode;
-    document.getElementById('lobby-code').setAttribute('data-fullid',id);
+    roomCode=id;
+    document.getElementById('lobby-code').textContent=id;
     showScreen('screen-lobby');
-    document.getElementById('lobby-status').textContent='⏳ Waiting for opponent...';
-    toast('Room ready! Share the code.',3000);
+    document.getElementById('lobby-status').textContent='⏳ Tap Copy Code and send to your friend!';
+    toast('Room ready! Copy and share the code.',3000);
   });
 
   peer.on('connection',conn=>{
@@ -688,7 +687,7 @@ function goJoinOnline(){
     conn.on('open',()=>{
       toast('Connected! Waiting for host to start...',4000);
       showScreen('screen-lobby');
-      document.getElementById('lobby-code').textContent=code.slice(-6).toUpperCase();
+      document.getElementById('lobby-code').textContent=code;
       document.getElementById('lobby-status').textContent='✅ Connected! Host is starting the game...';
       conn.on('data',handleMpData);
       conn.on('close',()=>{if(mode==='online')toast('Host disconnected!');});
